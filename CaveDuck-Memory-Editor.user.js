@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         CaveDuck Memory Editor v2.0.0
+// @name         CaveDuck Memory Editor v2.1.0
 // @namespace    https://caveduck.io/
-// @version      2.0.0
-// @description  케이브덕의 단기 기억을 편집하고 관리합니다. (날짜별 필터 지원, 붙여넣기 기능)
+// @version      2.1.0
+// @description  케이브덕의 단기 기억을 조회하고 복사합니다. (경량 버전)
 // @author       gemini
 // @match        https://caveduck.io/ko/talk/*
 // @grant        none
@@ -16,7 +16,6 @@
     let selectedDates = new Set();
     let selectedMemories = new Set();
     let isLoading = false;
-    let minChatId = Infinity;
 
     // ===== 유틸리티 =====
 
@@ -53,15 +52,6 @@
         }
     }
 
-    function getCharCount(str) {
-        return str ? str.length : 0;
-    }
-
-    function formatCharCount(current, max) {
-        const status = current > max ? '⚠' : '✓';
-        return `${status} ${current} / ${max}`;
-    }
-
     function getAllDates() {
         const dates = new Set();
         fetchedMemories.forEach(m => {
@@ -70,10 +60,6 @@
             }
         });
         return Array.from(dates).sort();
-    }
-
-    function getMemoryNumber(memory) {
-        return memory.chat_id - minChatId + 1;
     }
 
     // ===== 스타일 =====
@@ -253,14 +239,6 @@
             overflow: hidden;
         }
 
-        .char-count-container {
-            display: flex;
-            justify-content: space-between;
-            font-size: 11px;
-            color: #6b7280;
-            padding: 4px 0;
-        }
-
         .memory-content {
             flex: 1;
             overflow-y: auto;
@@ -327,51 +305,12 @@
             border-radius: 4px;
         }
 
-        .memory-item textarea {
-            width: 100%;
-            min-height: 70px;
-            padding: 6px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 11px;
-            resize: vertical;
-            box-sizing: border-box;
-        }
-
-        .memory-overflow-warning {
-            width: 100%;
-            min-height: 70px;
-            padding: 6px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 11px;
-            box-sizing: border-box;
-            word-wrap: break-word;
+        .memory-text {
+            font-size: 12px;
+            line-height: 1.5;
+            color: #1f2937;
             white-space: pre-wrap;
-            line-height: 1.4;
-            color: transparent;
-            position: relative;
-            pointer-events: none;
-        }
-
-        .memory-overflow-warning span {
-            color: #000;
-        }
-
-        .memory-overflow-warning span.overflow {
-            background-color: #ff4444;
-            color: #fff;
-            padding: 2px 4px;
-            border-radius: 2px;
-        }
-
-        .memory-item-footer {
-            display: flex;
-            justify-content: flex-end;
-            font-size: 10px;
-            color: #6b7280;
+            word-break: break-word;
         }
 
         .modal-footer {
@@ -422,40 +361,6 @@
             cursor: not-allowed;
         }
 
-        .save-success {
-            display: none;
-            padding: 6px 10px;
-            background: #dcfce7;
-            color: #166534;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
-        .save-success.show {
-            display: block;
-            animation: fadeInOut 3s ease-in-out;
-        }
-
-        @keyframes fadeInOut {
-            0% { opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { opacity: 0; }
-        }
-
-        .footer-row {
-            display: flex;
-            gap: 8px;
-            width: 100%;
-        }
-
-        .select-controls {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-        }
-
         .loading-spinner {
             text-align: center;
             padding: 20px;
@@ -466,6 +371,12 @@
             text-align: center;
             color: #9ca3af;
             padding: 20px;
+        }
+
+        .selected-count {
+            font-size: 11px;
+            color: #6b7280;
+            padding: 4px 0;
         }
 
         /* Dark Mode */
@@ -531,15 +442,8 @@
             color: #60a5fa;
         }
 
-        body[data-theme="dark"] .memory-item textarea {
-            background: #141413;
+        body[data-theme="dark"] .memory-text {
             color: #F0EFEB;
-            border-color: #42413D;
-        }
-
-        body[data-theme="dark"] .memory-overflow-warning {
-            background: #141413;
-            border-color: #42413D;
         }
 
         body[data-theme="dark"] .btn {
@@ -552,9 +456,8 @@
             background: #42413D;
         }
 
-        body[data-theme="dark"] .save-success {
-            background: #064e3b;
-            color: #a7f3d0;
+        body[data-theme="dark"] .selected-count {
+            color: #9ca3af;
         }
     `;
 
@@ -570,12 +473,6 @@
         const sessionId = getSessionId();
         const path = `/sessions/${sessionId}/structured-memories?limit=100&order=desc`;
         return await apiRequest('GET', path);
-    }
-
-    async function updateMemory(chatContentId, shortTerm) {
-        const path = `/structured-memory/${chatContentId}`;
-        const body = { short_term_memory: shortTerm };
-        return await apiRequest('PUT', path, body);
     }
 
     // ===== 모달 =====
@@ -604,26 +501,17 @@
                     <div class="filter-items" id="filter-items"></div>
                 </div>
                 <div class="modal-body">
-                    <div class="char-count-container">
-                        <span id="char-count-label">총 글자수: 0</span>
-                        <span id="selected-count">선택됨: 0</span>
-                    </div>
+                    <div class="selected-count" id="selected-count">선택됨: 0</div>
                     <div class="memory-content" id="memory-content">
                         <div class="loading-spinner">메모리 불러오는 중...</div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <div class="save-success" id="save-success">✓ 저장되었습니다!</div>
-                    <div class="footer-row">
-                        <div class="select-controls">
-                            <button class="btn" id="select-all-btn">전체 선택</button>
-                            <button class="btn" id="copy-selected-btn">선택 복사</button>
-                            <button class="btn" id="paste-selected-btn">붙여넣기</button>
-                        </div>
-                        <div style="flex: 1;"></div>
-                        <button id="memory-save-btn" class="btn btn-primary">저장</button>
-                        <button id="memory-close-footer-btn" class="btn">닫기</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn" id="select-all-btn">전체 선택</button>
+                        <button class="btn btn-primary" id="copy-selected-btn">선택 복사</button>
                     </div>
+                    <button id="memory-close-footer-btn" class="btn">닫기</button>
                 </div>
             </div>
         `;
@@ -634,15 +522,10 @@
         // 이벤트 바인딩
         document.getElementById('memory-close-btn').onclick = handleClose;
         document.getElementById('memory-close-footer-btn').onclick = handleClose;
-        document.getElementById('memory-save-btn').onclick = saveAll;
         document.getElementById('select-all-btn').onclick = toggleSelectAll;
         document.getElementById('copy-selected-btn').onclick = copySelected;
-        document.getElementById('paste-selected-btn').onclick = pasteSelected;
         document.getElementById('select-all-dates-btn').onclick = selectAllDates;
         document.getElementById('deselect-all-dates-btn').onclick = deselectAllDates;
-
-        // Ctrl+S 저장
-        document.addEventListener('keydown', handleCtrlS);
 
         // 메모리 로드
         await loadMemories();
@@ -653,24 +536,12 @@
     function closeModal() {
         const overlay = document.getElementById('memory-editor-overlay');
         if (overlay) {
-            document.removeEventListener('keydown', handleCtrlS);
             overlay.remove();
         }
     }
 
     function handleClose() {
-        const hasChanges = checkForChanges();
-        if (hasChanges && !confirm('변경사항이 있습니다. 저장하지 않고 닫으시겠습니까?')) {
-            return;
-        }
         closeModal();
-    }
-
-    function handleCtrlS(e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-            e.preventDefault();
-            saveAll();
-        }
     }
 
     // ===== 필터 =====
@@ -731,54 +602,6 @@
         renderMemories();
     }
 
-    // ===== 파싱 =====
-
-    function parseClipboardFormat(text) {
-        const items = [];
-        const lines = text.split('\n');
-        
-        let currentNumber = null;
-        let currentHeader = null;
-        let currentText = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            
-            // 숫자 + 헤더 형식: "67. [2026-04-22 | 21:40 | 위치]"
-            const headerMatch = line.match(/^(\d+)\.\s+(\[.+\])$/);
-            
-            if (headerMatch) {
-                // 이전 항목 저장
-                if (currentNumber !== null && currentHeader !== null) {
-                    items.push({
-                        number: currentNumber,
-                        header: currentHeader,
-                        text: currentText.join('\n').trimEnd()
-                    });
-                }
-                
-                // 새 항목 시작
-                currentNumber = parseInt(headerMatch[1]);
-                currentHeader = headerMatch[2];
-                currentText = [];
-            } else if (currentNumber !== null) {
-                // 헤더 이후의 텍스트 수집
-                currentText.push(line);
-            }
-        }
-
-        // 마지막 항목 저장
-        if (currentNumber !== null && currentHeader !== null) {
-            items.push({
-                number: currentNumber,
-                header: currentHeader,
-                text: currentText.join('\n').trimEnd()
-            });
-        }
-
-        return items;
-    }
-
     // ===== 렌더링 =====
 
     function renderMemories() {
@@ -792,17 +615,13 @@
 
         if (filtered.length === 0) {
             content.innerHTML = '<div class="empty-message">선택된 날짜의 메모리가 없습니다.</div>';
-            updateCharCount();
             updateSelectedCount();
             return;
         }
 
         filtered.forEach((memory) => {
             const memoryText = memory.short_term_memory || '';
-            const currentLength = getCharCount(memoryText);
-            const maxLength = currentLength + 100;
             const isSelected = selectedMemories.has(memory.chat_content_id);
-            const memoryNumber = getMemoryNumber(memory);
 
             const div = document.createElement('div');
             div.className = `memory-item ${isSelected ? 'checked' : ''}`;
@@ -827,94 +646,25 @@
             const header = document.createElement('div');
             header.className = 'memory-header';
             const sceneContext = memory.scene_context;
-            const headerText = `${memoryNumber}. [${sceneContext.date} | ${sceneContext.time} | ${sceneContext.location}]`;
+            const headerText = `[${sceneContext.date} | ${sceneContext.time} | ${sceneContext.location}]`;
             header.textContent = headerText;
 
-            const textareaContainer = document.createElement('div');
-            textareaContainer.style.position = 'relative';
-
-            const textarea = document.createElement('textarea');
-            textarea.value = memoryText;
-            textarea.dataset.id = memory.chat_content_id;
-            textarea.dataset.sceneDatetime = headerText;
-            textarea.dataset.maxLength = maxLength;
-            textarea.style.position = 'relative';
-            textarea.style.zIndex = '1';
-            textarea.style.background = 'white';
-
-            const overflowDiv = document.createElement('div');
-            overflowDiv.className = 'memory-overflow-warning';
-            overflowDiv.style.position = 'absolute';
-            overflowDiv.style.top = '0';
-            overflowDiv.style.left = '0';
-            overflowDiv.style.zIndex = '0';
-            overflowDiv.style.pointerEvents = 'none';
-
-            function updateOverflowDisplay() {
-                const text = textarea.value;
-                if (text.length <= maxLength) {
-                    overflowDiv.innerHTML = '';
-                    textarea.style.background = 'white';
-                } else {
-                    const normalText = text.substring(0, maxLength);
-                    const overflowText = text.substring(maxLength);
-                    
-                    const normalSpan = document.createElement('span');
-                    normalSpan.textContent = normalText;
-                    
-                    const overflowSpan = document.createElement('span');
-                    overflowSpan.className = 'overflow';
-                    overflowSpan.textContent = overflowText;
-                    
-                    overflowDiv.innerHTML = '';
-                    overflowDiv.appendChild(normalSpan);
-                    overflowDiv.appendChild(overflowSpan);
-                    
-                    textarea.style.background = 'rgba(255, 68, 68, 0.1)';
-                }
-            }
-
-            textarea.addEventListener('input', () => {
-                updateCharCount();
-                updateOverflowDisplay();
-            });
-
-            updateOverflowDisplay();
-
-            const footer = document.createElement('div');
-            footer.className = 'memory-item-footer';
-
-            const charCountSpan = document.createElement('span');
-            charCountSpan.textContent = formatCharCount(currentLength, maxLength);
-
-            footer.appendChild(charCountSpan);
-
-            textareaContainer.appendChild(overflowDiv);
-            textareaContainer.appendChild(textarea);
+            const text = document.createElement('div');
+            text.className = 'memory-text';
+            text.textContent = memoryText;
 
             wrapper.appendChild(header);
-            wrapper.appendChild(textareaContainer);
-            wrapper.appendChild(footer);
+            wrapper.appendChild(text);
 
             div.appendChild(checkbox);
             div.appendChild(wrapper);
             content.appendChild(div);
         });
 
-        updateCharCount();
         updateSelectedCount();
     }
 
     // ===== 유틸리티 =====
-
-    function updateCharCount() {
-        const textareas = document.querySelectorAll('textarea[data-id]');
-        let total = 0;
-        textareas.forEach(ta => total += getCharCount(ta.value));
-
-        const label = document.getElementById('char-count-label');
-        if (label) label.innerText = `총 글자수: ${total}`;
-    }
 
     function updateSelectedCount() {
         const label = document.getElementById('selected-count');
@@ -922,38 +672,36 @@
     }
 
     function toggleSelectAll() {
-        const textareas = document.querySelectorAll('textarea[data-id]');
-        const allSelected = textareas.length > 0 && Array.from(textareas).every(ta => selectedMemories.has(ta.dataset.id));
+        const checkboxes = document.querySelectorAll('.memory-checkbox');
+        const allSelected = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
 
         document.querySelectorAll('.memory-checkbox').forEach(checkbox => {
-            const memoryId = checkbox.parentElement.querySelector('textarea').dataset.id;
-            if (allSelected) {
-                selectedMemories.delete(memoryId);
-                checkbox.checked = false;
-            } else {
-                selectedMemories.add(memoryId);
-                checkbox.checked = true;
-            }
+            checkbox.checked = !allSelected;
+            checkbox.dispatchEvent(new Event('change'));
         });
-
-        document.querySelectorAll('.memory-item').forEach(item => {
-            item.classList.toggle('checked', !allSelected);
-        });
-
-        updateSelectedCount();
     }
 
     function copySelected() {
-        const textareas = document.querySelectorAll('textarea[data-id]');
-        const selected = Array.from(textareas)
-            .filter(ta => selectedMemories.has(ta.dataset.id))
-            .map(ta => ta.dataset.sceneDatetime + '\n' + ta.value)
-            .join('\n\n' + '─'.repeat(50) + '\n\n');
-
-        if (!selected) {
+        if (selectedMemories.size === 0) {
             alert('선택된 메모리가 없습니다.');
             return;
         }
+
+        const textareas = document.querySelectorAll('.memory-header');
+        const memories = [];
+
+        textareas.forEach(header => {
+            const item = header.closest('.memory-item');
+            const checkbox = item.querySelector('.memory-checkbox');
+            
+            if (checkbox.checked) {
+                const headerText = header.textContent;
+                const text = item.querySelector('.memory-text').textContent;
+                memories.push(headerText + '\n' + text);
+            }
+        });
+
+        const selected = memories.join('\n\n' + '─'.repeat(50) + '\n\n');
 
         const textarea = document.createElement('textarea');
         textarea.value = selected;
@@ -963,118 +711,6 @@
         document.body.removeChild(textarea);
 
         alert(`✓ ${selectedMemories.size}개 항목이 복사되었습니다!`);
-    }
-
-    async function pasteSelected() {
-        if (selectedMemories.size === 0) {
-            alert('선택된 메모리가 없습니다.');
-            return;
-        }
-
-        try {
-            const clipboardText = await navigator.clipboard.readText();
-            const parsedItems = parseClipboardFormat(clipboardText);
-
-            if (parsedItems.length === 0) {
-                alert('클립보드에서 메모리 형식을 찾을 수 없습니다.');
-                return;
-            }
-
-            if (parsedItems.length !== selectedMemories.size) {
-                alert(`선택된 메모리(${selectedMemories.size}개)와 붙여넣을 항목(${parsedItems.length}개)의 개수가 맞지 않습니다.`);
-                return;
-            }
-
-            // 선택된 메모리들을 번호순으로 정렬
-            const selectedArray = Array.from(selectedMemories)
-                .map(id => fetchedMemories.find(m => m.chat_content_id === id))
-                .filter(m => m)
-                .sort((a, b) => getMemoryNumber(a) - getMemoryNumber(b));
-
-            // 붙여넣기 항목들을 번호순으로 정렬
-            parsedItems.sort((a, b) => a.number - b.number);
-
-            // 매칭 및 적용
-            const textareas = document.querySelectorAll('textarea[data-id]');
-            let matchedCount = 0;
-
-            parsedItems.forEach((item, index) => {
-                if (index < selectedArray.length) {
-                    const memory = selectedArray[index];
-                    const textarea = Array.from(textareas).find(ta => ta.dataset.id === memory.chat_content_id);
-                    
-                    if (textarea) {
-                        textarea.value = item.text;
-                        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                        matchedCount++;
-                    }
-                }
-            });
-
-            if (matchedCount > 0) {
-                alert(`✓ ${matchedCount}개 메모리가 업데이트되었습니다!`);
-            }
-        } catch (error) {
-            alert('클립보드에 접근할 수 없습니다. 권한을 확인해주세요.');
-            console.error('Clipboard error:', error);
-        }
-    }
-
-    function checkForChanges() {
-        const textareas = document.querySelectorAll('textarea[data-id]');
-        for (let ta of textareas) {
-            const id = ta.dataset.id;
-            const memory = fetchedMemories.find(m => m.chat_content_id === id);
-            if (!memory) continue;
-
-            if (ta.value !== (memory.short_term_memory || '')) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // ===== 저장 =====
-
-    async function saveAll() {
-        const textareas = document.querySelectorAll('textarea[data-id]');
-        const saveBtn = document.getElementById('memory-save-btn');
-        const saveSuccess = document.getElementById('save-success');
-
-        saveBtn.disabled = true;
-        saveBtn.innerText = '저장 중...';
-
-        let saved = 0;
-        let failed = 0;
-
-        for (let ta of textareas) {
-            const id = ta.dataset.id;
-            const memory = fetchedMemories.find(m => m.chat_content_id === id);
-            if (!memory) continue;
-
-            if (ta.value === (memory.short_term_memory || '')) continue;
-
-            const res = await updateMemory(id, ta.value || null);
-
-            if (res && res.success) {
-                memory.short_term_memory = ta.value;
-                saved++;
-            } else {
-                failed++;
-            }
-        }
-
-        saveBtn.disabled = false;
-        saveBtn.innerText = '저장';
-
-        if (failed > 0) {
-            alert(`저장 완료: ${saved}건 성공, ${failed}건 실패`);
-        } else if (saved > 0) {
-            saveSuccess.classList.add('show');
-            setTimeout(() => saveSuccess.classList.remove('show'), 3000);
-        } else {
-            alert('변경사항이 없습니다.');
-        }
     }
 
     // ===== 로드 =====
@@ -1087,11 +723,6 @@
         if (res && res.memories) {
             // 최신순으로 받은 메모리를 오래된 순으로 정렬
             fetchedMemories = res.memories.sort((a, b) => a.chat_id - b.chat_id);
-            
-            // 최소 chat_id 저장 (번호 계산에 사용)
-            if (fetchedMemories.length > 0) {
-                minChatId = Math.min(...fetchedMemories.map(m => m.chat_id));
-            }
             
             if (selectedDates.size === 0) {
                 const dates = getAllDates();
