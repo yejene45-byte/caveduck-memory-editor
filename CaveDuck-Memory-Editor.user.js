@@ -16,7 +16,7 @@
     let selectedDates = new Set();
     let selectedMemories = new Set();
     let isLoading = false;
-    let totalMemoriesCount = 0;
+    let minChatId = Infinity;
 
     // ===== 유틸리티 =====
 
@@ -73,8 +73,7 @@
     }
 
     function getMemoryNumber(memory) {
-        const index = fetchedMemories.findIndex(m => m.chat_content_id === memory.chat_content_id);
-        return totalMemoriesCount - fetchedMemories.length + index + 1;
+        return memory.chat_id - minChatId + 1;
     }
 
     // ===== 스타일 =====
@@ -569,7 +568,7 @@
 
     async function getStructuredMemories() {
         const sessionId = getSessionId();
-        const path = `/sessions/${sessionId}/structured-memories?limit=100&order=asc`;
+        const path = `/sessions/${sessionId}/structured-memories?limit=100&order=desc`;
         return await apiRequest('GET', path);
     }
 
@@ -1086,11 +1085,13 @@
         isLoading = false;
 
         if (res && res.memories) {
-            fetchedMemories = res.memories;
+            // 최신순으로 받은 메모리를 오래된 순으로 정렬
+            fetchedMemories = res.memories.sort((a, b) => a.chat_id - b.chat_id);
             
-            // 총 메모리 개수 설정 (현재는 응답에서 가져올 수 없으므로 추정)
-            // API가 limit=100 & order=asc를 사용하므로, 첫 번째 메모리의 번호는 (totalCount - 100 + 1)
-            totalMemoriesCount = res.total || fetchedMemories.length;
+            // 최소 chat_id 저장 (번호 계산에 사용)
+            if (fetchedMemories.length > 0) {
+                minChatId = Math.min(...fetchedMemories.map(m => m.chat_id));
+            }
             
             if (selectedDates.size === 0) {
                 const dates = getAllDates();
